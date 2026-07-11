@@ -1,0 +1,7 @@
+# Tech Challenge Fase 2 - dependencias diretas
+# Python 3.9
+
+basedosdados==2.0.3   # acesso ao dataset publico no BigQuery
+boto3==1.42.97        # SDK da AWS (upload para o S3)
+pandas==2.3.3         # manipulacao de dados em DataFrame
+pyarrow==21.0.0       # escrita de arquivos Parquet
