@@ -17,6 +17,22 @@ SERIE = {
     "2": "2o ano do Ensino Fundamental",
 }
 
+# Colunas exclusivas dos microdados de alunos
+PRESENCA = {
+    "0": "Ausente",
+    "1": "Presente",
+}
+
+PREENCHIMENTO_CADERNO = {
+    "0": "Prova nao preenchida",
+    "1": "Prova preenchida",
+}
+
+ALFABETIZADO = {
+    "0": "Nao",
+    "1": "Sim",
+}
+
 
 def decode(source_col, mapping, default=None):
     """Expressao de coluna que traduz codigos em descricoes.
