@@ -1,5 +1,4 @@
-"""Silver das metas (brasil, uf, municipio). As tres compartilham estrutura,
-entao um unico script parametrizado processa todas, evitando codigo repetido."""
+"""Silver das metas: um script parametrizado para brasil, uf e municipio."""
 
 import sys
 
@@ -10,7 +9,7 @@ from spark_session import get_spark
 
 BUCKET = "fiap-tc2-286958704145"
 
-# Cada meta so difere na chave geografica. brasil nao tem (e nacional).
+# brasil nao tem chave geografica (e nacional)
 METAS = [
     {"name": "meta_brasil",    "chave_geo": None},
     {"name": "meta_uf",        "chave_geo": "sigla_uf"},
@@ -28,9 +27,8 @@ def processar_meta(spark, meta):
     print(f"  {df.count()} linhas na entrada")
 
     df = df.dropDuplicates()
-    # Diferente de uf/municipio, aqui rede ja vem como texto ("Publica"), nao codigo
+    # Aqui rede ja vem como texto, nao codigo (nao precisa decodificar)
 
-    # Chaves a validar: ano e rede sempre; a chave geografica so quando existe
     chaves = [F.col("ano").isNull(), F.col("rede").isNull()]
     if meta["chave_geo"]:
         chaves.append(F.col(meta["chave_geo"]).isNull())
