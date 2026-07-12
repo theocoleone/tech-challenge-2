@@ -21,7 +21,6 @@ def main():
     df = spark.read.parquet(BRONZE_MUNICIPIO)
     print(f"  {df.count()} linhas na entrada")
 
-    # Diretorio de municipios: so as colunas que faltam na tabela de indicadores
     diretorio = (
         spark.read.parquet(BRONZE_DIRETORIO)
         .select("id_municipio", "nome", "sigla_uf")
@@ -29,8 +28,7 @@ def main():
 
     df = df.dropDuplicates()
 
-    # Enriquece com nome e sigla_uf. left join preserva todo indicador,
-    # mesmo que falte par no diretorio (a validacao abaixo detecta orfaos).
+    # left join preserva todo indicador mesmo sem par no diretorio
     df = df.join(diretorio, on="id_municipio", how="left")
 
     df = df.withColumn("rede_desc", decode("rede", REDE))

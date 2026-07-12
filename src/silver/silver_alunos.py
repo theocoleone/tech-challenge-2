@@ -1,9 +1,5 @@
 """Silver dos microdados de alunos: limpa, decodifica e enriquece com UF.
-
-Mantem o grao de aluno (uma linha por criança). Serve de base para modelos
-de ML e para validar a taxa oficial das tabelas agregadas. A agregacao em si
-fica para a Gold.
-"""
+Mantem o grao de aluno; a agregacao fica para a Gold."""
 
 import sys
 
@@ -18,8 +14,7 @@ BRONZE = f"s3a://{BUCKET}/bronze/alunos/"
 BRONZE_DIRETORIO = f"s3a://{BUCKET}/bronze/diretorio_municipio/"
 SILVER = f"s3a://{BUCKET}/silver/alunos/"
 
-# Ponto de corte oficial do SAEB (Pesquisa Alfabetiza Brasil 2023): a partir de
-# 743 a crianca e considerada alfabetizada. Usado na Gold para recalcular a taxa.
+# Ponto de corte oficial do SAEB: alfabetizado a partir de 743. Usado na Gold.
 CORTE_ALFABETIZACAO = 743
 
 
