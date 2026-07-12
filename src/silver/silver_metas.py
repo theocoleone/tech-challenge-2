@@ -6,6 +6,7 @@ from pyspark.sql import functions as F
 
 sys.path.append("src")
 from spark_session import get_spark
+from monitoramento import Etapa
 
 BUCKET = "fiap-tc2-286958704145"
 
@@ -22,32 +23,28 @@ def processar_meta(spark, meta):
     bronze = f"s3a://{BUCKET}/bronze/{nome}/"
     silver = f"s3a://{BUCKET}/silver/{nome}/"
 
-    print(f"Lendo {bronze}")
-    df = spark.read.parquet(bronze)
-    print(f"  {df.count()} linhas na entrada")
+    with Etapa(f"silver_{nome}", camada="silver") as etapa:
+        df = spark.read.parquet(bronze)
+        df = df.dropDuplicates()
+        # Aqui rede ja vem como texto, nao codigo (nao precisa decodificar)
 
-    df = df.dropDuplicates()
-    # Aqui rede ja vem como texto, nao codigo (nao precisa decodificar)
+        chaves = [F.col("ano").isNull(), F.col("rede").isNull()]
+        if meta["chave_geo"]:
+            chaves.append(F.col(meta["chave_geo"]).isNull())
+        condicao_nula = chaves[0]
+        for c in chaves[1:]:
+            condicao_nula = condicao_nula | c
 
-    chaves = [F.col("ano").isNull(), F.col("rede").isNull()]
-    if meta["chave_geo"]:
-        chaves.append(F.col(meta["chave_geo"]).isNull())
-    condicao_nula = chaves[0]
-    for c in chaves[1:]:
-        condicao_nula = condicao_nula | c
+        nulos_chave = df.filter(condicao_nula).count()
+        fora_faixa = df.filter(
+            (F.col("taxa_alfabetizacao") < 0) | (F.col("taxa_alfabetizacao") > 100)
+        ).count()
 
-    nulos_chave = df.filter(condicao_nula).count()
-    fora_faixa = df.filter(
-        (F.col("taxa_alfabetizacao") < 0) | (F.col("taxa_alfabetizacao") > 100)
-    ).count()
-    print(f"  Validacao | nulos em chave: {nulos_chave} | taxa fora de 0-100: {fora_faixa}")
+        if nulos_chave > 0 or fora_faixa > 0:
+            raise ValueError(f"Falha de qualidade em {nome}: nulos em chave ou taxa fora de faixa.")
 
-    if nulos_chave > 0 or fora_faixa > 0:
-        raise ValueError(f"Falha de qualidade em {nome}: nulos em chave ou taxa fora de faixa.")
-
-    print(f"  {df.count()} linhas na saida -> {silver}")
-    df.write.mode("overwrite").partitionBy("ano").parquet(silver)
-    print(f"  {nome} concluida.\n")
+        etapa.linhas = df.count()
+        df.write.mode("overwrite").partitionBy("ano").parquet(silver)
 
 
 def main():
