@@ -186,17 +186,21 @@ A distinção nasceu de um caso concreto. A validação de consistência entre i
 
 ## Dashboard
 
-Um dashboard estático com gráficos interativos (hover, zoom, filtro por legenda) é gerado a partir dos datasets Gold:
+Dashboard estático com gráficos interativos (hover, zoom, filtro por legenda), gerado a partir dos datasets Gold e publicado como site estático no S3:
+
+**http://fiap-tc2-dashboard-286958704145.s3-website-us-east-1.amazonaws.com**
 
 ```bash
 pip install plotly
 python dashboard/gerar_dashboard.py
 ```
 
-Produz `dashboard/index.html` com quatro visualizações: ranking de UFs por taxa de alfabetização, meta 2030 versus realizado, evolução temporal por UF e top municípios com maior gap para a meta. Para publicar como site estático no S3:
+Produz `dashboard/index.html` com uma faixa de indicadores-chave e quatro visualizações: ranking de UFs por taxa de alfabetização, meta 2030 versus realizado, evolução temporal por UF e municípios mais distantes da meta.
+
+A publicação usa um bucket dedicado (`fiap-tc2-dashboard-286958704145`), separado do bucket de dados. O bucket de dados (Bronze, Silver, Gold) permanece totalmente privado, com o bloqueio de acesso público da AWS ativo; só o bucket do site é público, e apenas para leitura (`s3:GetObject`). Isso isola a exposição do site dos dados da pipeline.
 
 ```bash
-aws s3 sync dashboard/ s3://fiap-tc2-286958704145/dashboard/ --profile fiap-tech-challenge
+aws s3 cp dashboard/index.html s3://fiap-tc2-dashboard-286958704145/index.html --profile fiap-tech-challenge
 ```
 
 ## Aplicação em IA
