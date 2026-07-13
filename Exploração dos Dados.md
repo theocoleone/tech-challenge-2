@@ -293,4 +293,7 @@ taxa de "orfandade" por faixa de participação:
 
 O código dessa análise está em `analises/analise_metas_ausentes.py`.
 
+### Só 25 estados na rede municipal (nao tem DF nem RR)
+
+
 ---
