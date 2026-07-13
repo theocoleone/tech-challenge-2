@@ -2,12 +2,11 @@
 
 import sys
 
-from pyspark.sql import functions as F
-
 sys.path.append("src")
 from spark_session import get_spark
 from dicionario import REDE, SERIE, decode
 from monitoramento import Etapa
+from qualidade import nulos_em, duplicados_em, fora_da_faixa, checar
 
 BUCKET = "fiap-tc2-286958704145"
 BRONZE = f"s3a://{BUCKET}/bronze/uf/"
@@ -21,20 +20,14 @@ def main():
         df = spark.read.parquet(BRONZE)
         df = df.dropDuplicates()
 
-        # Mantem os codigos originais e adiciona colunas de descricao
         df = df.withColumn("rede_desc", decode("rede", REDE))
         df = df.withColumn("serie_desc", decode("serie", SERIE))
 
-        nulos_chave = df.filter(
-            F.col("ano").isNull() | F.col("sigla_uf").isNull() | F.col("rede").isNull()
-        ).count()
-        fora_faixa = df.filter(
-            (F.col("taxa_alfabetizacao") < 0) | (F.col("taxa_alfabetizacao") > 100)
-        ).count()
-
-        # Nao grava se a qualidade falhar
-        if nulos_chave > 0 or fora_faixa > 0:
-            raise ValueError("Falha de qualidade na uf: nulos em chave ou taxa fora de faixa.")
+        checar("silver_uf", {
+            "nulos em chave": nulos_em(df, ["ano", "sigla_uf", "rede"]),
+            "duplicidade de chave": duplicados_em(df, ["ano", "sigla_uf", "rede"]),
+            "taxa fora de 0-100": fora_da_faixa(df, "taxa_alfabetizacao", 0, 100),
+        })
 
         etapa.linhas = df.count()
         df.write.mode("overwrite").partitionBy("ano").parquet(SILVER)

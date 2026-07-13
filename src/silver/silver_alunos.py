@@ -1,21 +1,18 @@
-"""Silver dos microdados de alunos: limpa, decodifica e enriquece com UF.
-Mantem o grao de aluno; a agregacao fica para a Gold."""
+"""Silver dos microdados de alunos: limpa, decodifica e enriquece com UF."""
 
 import sys
-
-from pyspark.sql import functions as F
 
 sys.path.append("src")
 from spark_session import get_spark
 from dicionario import REDE, SERIE, PRESENCA, PREENCHIMENTO_CADERNO, ALFABETIZADO, decode
 from monitoramento import Etapa
+from qualidade import nulos_em, duplicados_em, fora_do_conjunto, chaves_orfas, checar
 
 BUCKET = "fiap-tc2-286958704145"
 BRONZE = f"s3a://{BUCKET}/bronze/alunos/"
 BRONZE_DIRETORIO = f"s3a://{BUCKET}/bronze/diretorio_municipio/"
 SILVER = f"s3a://{BUCKET}/silver/alunos/"
 
-# Ponto de corte oficial do SAEB: alfabetizado a partir de 743. Usado na Gold.
 CORTE_ALFABETIZACAO = 743
 
 
@@ -40,13 +37,12 @@ def main():
 
         df = df.join(diretorio, on="id_municipio", how="left")
 
-        nulos_chave = df.filter(
-            F.col("ano").isNull() | F.col("id_municipio").isNull() | F.col("id_aluno").isNull()
-        ).count()
-        alfabetizado_invalido = df.filter(~F.col("alfabetizado").isin("0", "1")).count()
-
-        if nulos_chave > 0 or alfabetizado_invalido > 0:
-            raise ValueError("Falha de qualidade em alunos: nulos em chave ou alfabetizado invalido.")
+        checar("silver_alunos", {
+            "nulos em chave": nulos_em(df, ["ano", "id_municipio", "id_aluno"]),
+            "duplicidade de chave": duplicados_em(df, ["ano", "id_aluno"]),
+            "alfabetizado invalido": fora_do_conjunto(df, "alfabetizado", ["0", "1"]),
+            "municipios orfaos do diretorio": chaves_orfas(df, diretorio, "id_municipio"),
+        })
 
         etapa.linhas = df.count()
         df.write.mode("overwrite").partitionBy("ano").parquet(SILVER)

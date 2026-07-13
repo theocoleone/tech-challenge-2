@@ -1,17 +1,25 @@
-"""Ingestao Bronze: puxa as tabelas do BigQuery e grava no S3 em Parquet, particionado por ano."""
+"""Ingestao Bronze: puxa as tabelas do BigQuery e grava no S3 em Parquet, particionado por ano.
+
+Roda local (auth via gcloud) ou como job Glue Python Shell (auth via chave de
+service account guardada no Secrets Manager).
+"""
 
 import io
+import os
 import sys
 import time
+import json
 import logging
 
 import boto3
-import basedosdados as bd
+from google.cloud import bigquery
 
 GCP_BILLING_PROJECT = "aist-tech-challenge-2"
 S3_BUCKET = "fiap-tc2-286958704145"
 S3_PROFILE = "fiap-tech-challenge"
 BRONZE_PREFIX = "bronze"
+GCP_SECRET_NAME = "gcp-service-account-bronze"
+AWS_REGION = "us-east-1"
 
 # Fontes a ingerir. partition=None para tabelas sem coluna de ano.
 SOURCES = [
@@ -32,11 +40,30 @@ logging.basicConfig(
 log = logging.getLogger("bronze")
 
 
-def read_source(source):
+def _rodando_no_glue():
+    return "GLUE_VERSION" in os.environ or "GLUE_INSTALLATION" in os.environ
+
+
+def configurar_credenciais_gcp():
+    """No Glue, busca a chave da service account no Secrets Manager e aponta a
+    variavel que o cliente BigQuery usa. Local, o gcloud ja cuida disso."""
+    if not _rodando_no_glue():
+        return
+
+    secret = boto3.client("secretsmanager", region_name=AWS_REGION)
+    chave = secret.get_secret_value(SecretId=GCP_SECRET_NAME)["SecretString"]
+
+    caminho = "/tmp/gcp-key.json"
+    with open(caminho, "w") as f:
+        f.write(chave)
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = caminho
+    log.info("Credenciais GCP configuradas via Secrets Manager")
+
+
+def read_source(bq, source):
     full_table = f"basedosdados.{source['dataset']}.{source['table']}"
-    query = f"SELECT * FROM `{full_table}`"
     log.info(f"Lendo {full_table} ...")
-    df = bd.read_sql(query=query, billing_project_id=GCP_BILLING_PROJECT)
+    df = bq.query(f"SELECT * FROM `{full_table}`").to_dataframe()
     log.info(f"  {len(df):,} linhas lidas de {source['name']}")
     return df
 
@@ -49,8 +76,8 @@ def upload_parquet(df, s3, key):
     log.info(f"  -> s3://{S3_BUCKET}/{key} ({len(df):,} linhas)")
 
 
-def ingest_source(source, s3):
-    df = read_source(source)
+def ingest_source(source, bq, s3):
+    df = read_source(bq, source)
     base = f"{BRONZE_PREFIX}/{source['name']}"
 
     if source["partition"] is None:
@@ -77,12 +104,18 @@ def main(only=None):
         log.info(f"Modo seletivo: {[s['name'] for s in sources]}")
 
     log.info("Iniciando ingestao Bronze")
-    s3 = boto3.Session(profile_name=S3_PROFILE).client("s3")
+    configurar_credenciais_gcp()
+    bq = bigquery.Client(project=GCP_BILLING_PROJECT)
+    # No Glue as credenciais AWS vem do papel do job; local usa o profile
+    if _rodando_no_glue():
+        s3 = boto3.client("s3")
+    else:
+        s3 = boto3.Session(profile_name=S3_PROFILE).client("s3")
 
     start = time.time()
     for source in sources:
         try:
-            ingest_source(source, s3)
+            ingest_source(source, bq, s3)
         except Exception as exc:
             log.error(f"Falha ao ingerir {source['name']}: {exc}")
             raise
@@ -91,4 +124,6 @@ def main(only=None):
 
 
 if __name__ == "__main__":
-    main(only=sys.argv[1:] or None)
+    # No Glue nao ha argumentos de linha de comando (roda todas as fontes);
+    # local aceita nomes de fonte para teste seletivo.
+    main(only=None if _rodando_no_glue() else (sys.argv[1:] or None))

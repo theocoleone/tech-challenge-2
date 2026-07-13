@@ -19,3 +19,8 @@ venv/
 data/raw/
 *.csv
 *.parquet
+
+# Credenciais (nunca versionar chaves)
+*.json
+!package.json
+secrets/

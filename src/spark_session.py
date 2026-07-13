@@ -1,4 +1,4 @@
-"""SparkSession configurada para acessar o S3 via s3a://."""
+"""SparkSession que funciona tanto local (s3a + profile) quanto no AWS Glue."""
 
 import os
 
@@ -10,7 +10,16 @@ AWS_PROFILE = "fiap-tech-challenge"
 AWS_REGION = "us-east-1"
 
 
+def _rodando_no_glue():
+    return "GLUE_VERSION" in os.environ or "GLUE_INSTALLATION" in os.environ
+
+
 def get_spark(app_name="tech-challenge-2"):
+    # No Glue a sessao e as credenciais ja vem do ambiente (papel IAM do job)
+    if _rodando_no_glue():
+        return SparkSession.builder.appName(app_name).getOrCreate()
+
+    # Local: conector s3a lendo o profile do ~/.aws
     os.environ["AWS_PROFILE"] = AWS_PROFILE
     os.environ["AWS_REGION"] = AWS_REGION
 
