@@ -2,15 +2,13 @@
 
 import sys
 
-from pyspark.sql import functions as F
-
 sys.path.append("src")
 from spark_session import get_spark
 from monitoramento import Etapa
+from qualidade import nulos_em, duplicados_em, fora_da_faixa, checar
 
 BUCKET = "fiap-tc2-286958704145"
 
-# brasil nao tem chave geografica (e nacional)
 METAS = [
     {"name": "meta_brasil",    "chave_geo": None},
     {"name": "meta_uf",        "chave_geo": "sigla_uf"},
@@ -26,22 +24,16 @@ def processar_meta(spark, meta):
     with Etapa(f"silver_{nome}", camada="silver") as etapa:
         df = spark.read.parquet(bronze)
         df = df.dropDuplicates()
-        # Aqui rede ja vem como texto, nao codigo (nao precisa decodificar)
 
-        chaves = [F.col("ano").isNull(), F.col("rede").isNull()]
+        chaves = ["ano", "rede"]
         if meta["chave_geo"]:
-            chaves.append(F.col(meta["chave_geo"]).isNull())
-        condicao_nula = chaves[0]
-        for c in chaves[1:]:
-            condicao_nula = condicao_nula | c
+            chaves.append(meta["chave_geo"])
 
-        nulos_chave = df.filter(condicao_nula).count()
-        fora_faixa = df.filter(
-            (F.col("taxa_alfabetizacao") < 0) | (F.col("taxa_alfabetizacao") > 100)
-        ).count()
-
-        if nulos_chave > 0 or fora_faixa > 0:
-            raise ValueError(f"Falha de qualidade em {nome}: nulos em chave ou taxa fora de faixa.")
+        checar(nome, {
+            "nulos em chave": nulos_em(df, chaves),
+            "duplicidade de chave": duplicados_em(df, chaves),
+            "taxa fora de 0-100": fora_da_faixa(df, "taxa_alfabetizacao", 0, 100),
+        })
 
         etapa.linhas = df.count()
         df.write.mode("overwrite").partitionBy("ano").parquet(silver)

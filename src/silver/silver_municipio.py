@@ -8,6 +8,7 @@ sys.path.append("src")
 from spark_session import get_spark
 from dicionario import REDE, SERIE, decode
 from monitoramento import Etapa
+from qualidade import nulos_em, duplicados_em, chaves_orfas, fora_da_faixa, checar
 
 BUCKET = "fiap-tc2-286958704145"
 BRONZE_MUNICIPIO = f"s3a://{BUCKET}/bronze/municipio/"
@@ -27,22 +28,18 @@ def main():
         )
 
         df = df.dropDuplicates()
-
-        # left join preserva todo indicador mesmo sem par no diretorio
         df = df.join(diretorio, on="id_municipio", how="left")
 
         df = df.withColumn("rede_desc", decode("rede", REDE))
         df = df.withColumn("serie_desc", decode("serie", SERIE))
 
-        nulos_chave = df.filter(
-            F.col("ano").isNull() | F.col("id_municipio").isNull() | F.col("rede").isNull()
-        ).count()
-        fora_faixa = df.filter(
-            (F.col("taxa_alfabetizacao") < 0) | (F.col("taxa_alfabetizacao") > 100)
-        ).count()
-
-        if nulos_chave > 0 or fora_faixa > 0:
-            raise ValueError("Falha de qualidade na municipio: nulos em chave ou taxa fora de faixa.")
+        checar("silver_municipio", {
+            "nulos em chave": nulos_em(df, ["ano", "id_municipio", "rede"]),
+            "duplicidade de chave": duplicados_em(df, ["ano", "id_municipio", "rede"]),
+            "taxa fora de 0-100": fora_da_faixa(df, "taxa_alfabetizacao", 0, 100),
+            "municipios sem UF": df.filter(F.col("sigla_uf").isNull()).count(),
+            "municipios orfaos do diretorio": chaves_orfas(df, diretorio, "id_municipio"),
+        })
 
         etapa.linhas = df.count()
         df.write.mode("overwrite").partitionBy("ano").parquet(SILVER)
