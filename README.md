@@ -480,6 +480,8 @@ Linguagem de negócio para os campos das camadas analíticas e para os códigos 
 
 ## 16. Apresentação
 
+[![Assistir ao vídeo executivo](https://img.youtube.com/vi/agdhnlp-T-k/maxresdefault.jpg)](https://youtu.be/agdhnlp-T-k)
+
 **Vídeo executivo:** https://youtu.be/agdhnlp-T-k
 
 O vídeo aborda o problema de negócio, a arquitetura da solução, o valor para análises educacionais e o potencial de uso para IA, com demonstração da pipeline rodando na nuvem e do dashboard.
