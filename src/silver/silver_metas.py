@@ -5,7 +5,7 @@ import sys
 sys.path.append("src")
 from spark_session import get_spark
 from monitoramento import Etapa
-from qualidade import nulos_em, duplicados_em, fora_da_faixa, checar
+from qualidade import nulos_em, duplicados_em, fora_da_faixa, checar, avisar
 
 BUCKET = "fiap-tc2-286958704145"
 
@@ -29,11 +29,34 @@ def processar_meta(spark, meta):
         if meta["chave_geo"]:
             chaves.append(meta["chave_geo"])
 
-        checar(nome, {
+        regras = {
             "nulos em chave": nulos_em(df, chaves),
             "duplicidade de chave": duplicados_em(df, chaves),
             "taxa fora de 0-100": fora_da_faixa(df, "taxa_alfabetizacao", 0, 100),
+            "meta 2030 fora de 0-100": fora_da_faixa(
+                df, "meta_alfabetizacao_2030", 0, 100
+            ),
+        }
+
+        avisar(nome, {
+            # A taxa realizada vem das tabelas de indicador na integração.
+            "taxa ausente na fonte": nulos_em(df, ["taxa_alfabetizacao"]),
         })
+
+        if nome == "meta_uf":
+            # RR não possui meta 2030 em 2023/2024 e também não possui
+            # indicador correspondente para avançar à Gold.
+            avisar(nome, {
+                "meta 2030 ausente na fonte": nulos_em(
+                    df, ["meta_alfabetizacao_2030"]
+                ),
+            })
+        else:
+            regras["nulos em meta 2030"] = nulos_em(
+                df, ["meta_alfabetizacao_2030"]
+            )
+
+        checar(nome, regras)
 
         etapa.linhas = df.count()
         df.write.mode("overwrite").partitionBy("ano").parquet(silver)

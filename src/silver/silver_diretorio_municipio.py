@@ -24,6 +24,7 @@ def main():
 
         checar("silver_diretorio_municipio", {
             "nulos em id_municipio": nulos_em(df, ["id_municipio"]),
+            "nulos em campos obrigatorios": nulos_em(df, ["nome", "sigla_uf"]),
             "id_municipio duplicado": duplicados_em(df, "id_municipio"),
         })
 

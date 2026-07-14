@@ -123,7 +123,7 @@ flowchart LR
 - **Silver**: dado limpo, decodificado e validado, com integração das bases (joins entre indicadores, metas e diretório territorial). Aplica os 4 mecanismos de qualidade e interrompe a gravação em caso de falha.
 - **Gold**: datasets analíticos prontos para consumo, orientados às perguntas de negócio. Consome a Silver já integrada, sem joins entre fontes.
 
-O caminho de streaming é ortogonal a essas camadas: ele alimenta a Bronze de forma contínua, ao lado da carga batch. As três camadas descrevem os estágios de refinamento do dado; o batch e o streaming são os dois modos de fazer o dado entrar na Bronze.
+O caminho de streaming é ortogonal a essas camadas: ele alimenta a Bronze de forma contínua, ao lado da carga batch. No escopo atual, ele demonstra a ingestão near-real-time até a Bronze; Silver e Gold consomem as fontes batch. As três camadas descrevem os estágios de refinamento do dado, enquanto batch e streaming são os dois modos de entrada.
 
 ### 4.2 Caminho batch
 
@@ -137,7 +137,7 @@ O caminho de streaming é ortogonal a essas camadas: ele alimenta a Bronze de fo
 
 ### 4.3 Caminho streaming
 
-Um **producer** reamostra registros de alunos da Bronze e os publica como eventos individuais na fila **SQS** `alfabetizacao-eventos`, com intervalo configurável para simular fluxo contínuo. A fila aciona a função **Lambda** `alfabetizacao-consumer`, que grava cada evento na Bronze em `bronze/streaming/dt_ingestao=YYYY-MM-DD/`.
+Um **producer** reamostra registros de alunos da Bronze e os publica como eventos individuais na fila **SQS** `alfabetizacao-eventos`, com intervalo configurável para simular fluxo contínuo. Antes do envio, valores ausentes são convertidos para `null`, impedindo constantes inválidas como `NaN` no JSON. A fila aciona a função **Lambda** `alfabetizacao-consumer`, que valida o JSON e seus campos obrigatórios antes de gravar cada evento na Bronze em `bronze/streaming/dt_ingestao=YYYY-MM-DD/`.
 
 O producer simula a fonte externa de eventos: em produção, seria o sistema que gera as novas medições (por exemplo, a correção das provas do Saeb). Como toda origem de dados, ele fica fora da pipeline, do mesmo modo que o BigQuery é a fonte externa do caminho batch. O processamento, da fila em diante, roda inteiramente na AWS.
 
@@ -149,13 +149,13 @@ O producer simula a fonte externa de eventos: em produção, seria o sistema que
 
 | Componente | Tecnologia | Por que |
 |------------|-----------|---------|
-| Fonte | BigQuery (Base dos Dados) | Backend público oficial do dataset do INEP |
+| Fonte | BigQuery (Base dos Dados) | Republicação estruturada de dados públicos produzidos pelo INEP |
 | Armazenamento | Amazon S3 | Data lake de baixo custo; base das três camadas em Parquet |
 | Ingestão batch | AWS Glue Python Shell | Tarefa de I/O que não se beneficia de cluster distribuído; evita pagar por Spark |
 | Processamento batch | AWS Glue ETL (Spark serverless) | Compute escalável gerenciado; mesma lógica portável para EMR sem reescrita |
 | Streaming | Amazon SQS + AWS Lambda | Ingestão near-real-time sem servidor ativo; free tier cobre o volume simulado |
 | Credenciais de terceiro | AWS Secrets Manager | Cofre gerenciado e criptografado para a chave da service account GCP |
-| Monitoramento | Amazon CloudWatch | Logs nativos dos jobs Glue e da Lambda, mais dois alarmes operacionais |
+| Monitoramento | Amazon CloudWatch | Logs nativos dos jobs Glue e da Lambda, mais dois alarmes de estado |
 | Formato | Parquet + snappy | Colunar e comprimido; reduz volume lido em consultas analíticas |
 
 ### 5.2 Batch vs streaming
@@ -188,7 +188,7 @@ O volume do dataset (cerca de 275 MB, concentrados na tabela de alunos) não exi
 
 - **Chave do GCP no Secrets Manager**: a Bronze precisa autenticar no BigQuery. Em um job headless não há login por navegador, então usa-se uma service account com chave JSON, guardada no Secrets Manager (cofre criptografado com auditoria) em vez do S3.
 - **Dashboard isolado dos dados**: o site é publicado em um bucket dedicado, servido por HTTPS via CloudFront; o bucket de dados (Bronze, Silver, Gold) permanece totalmente privado, com bloqueio de acesso público ativo. Isso isola a exposição do site dos dados da pipeline.
-- **IAM**: a conta é pessoal, isolada e sem dados sensíveis. Para o prazo acadêmico, as policies `FullAccess` foram aceitáveis; em produção, aplicar-se-ia least privilege escopado ao bucket e às filas, e IAM Identity Center (SSO).
+- **IAM**: na execução acadêmica foram usadas policies `FullAccess`, uma limitação consciente de segurança e portabilidade. Em produção, os papéis seriam restritos por least privilege ao bucket, às filas e aos jobs necessários, com IAM Identity Center (SSO).
 
 ---
 
@@ -203,7 +203,7 @@ A pipeline implementa quatro mecanismos de validação, todos concentrados na ca
 | **Validação de chaves de relacionamento** | Chaves órfãs entre tabelas (anti-join) | municipio↔diretório, alunos↔diretório, indicador↔meta |
 | **Consistência entre tabelas** | Chaves do indicador batem com as da meta antes de integrar | silver_integracao (municipio e UF) |
 
-O módulo `src/qualidade.py` é reutilizado por todos os jobs Silver. As funções recebem o DataFrame e devolvem a contagem de violações. Duas posturas: `checar` interrompe o job (dado corrompido, como nulo em chave), enquanto `avisar` apenas registra a contagem (violação esperada pela natureza do dado).
+O módulo `src/qualidade.py` é reutilizado por todos os jobs Silver. As funções recebem o DataFrame e devolvem a contagem de violações. Além das chaves, campos analíticos obrigatórios como taxa de alfabetização, meta 2030 e rótulo de alfabetização são verificados explicitamente. A proficiência pode ser nula quando o aluno não realizou a avaliação e, por isso, não é tratada como erro. Nas tabelas de metas, a taxa realizada é informativa e pode estar ausente na fonte (120 municípios em 2023; AC/DF em 2023 e RR em 2023/2024), pois a integração obtém o realizado das tabelas de indicador. A meta 2030 permanece obrigatória, com exceção de RR em 2023/2024, que também não possui indicador correspondente. Duas posturas: `checar` interrompe o job, enquanto `avisar` registra uma ocorrência esperada sem interromper o processamento.
 
 Essa distinção nasceu de um caso real: a validação de consistência apontou 242 municípios com taxa medida mas sem meta 2030 projetada. Em vez de tratar como erro, investigou-se (ver seção 8) e concluiu-se que é comportamento esperado da fonte. Por isso essa validação virou informativa, e os municípios são preservados na base integrada com meta nula.
 
@@ -213,10 +213,12 @@ Essa distinção nasceu de um caso real: a validação de consistência apontou 
 
 ### 7.1 Monitoramento
 
-Cada etapa registra um log estruturado em JSON com nome da etapa, status, duração e número de linhas processadas (utilitário `monitoramento.Etapa`). Esses logs vão para o CloudWatch nativamente. Dois alarmes cobrem as falhas mais relevantes:
+Cada etapa registra um log estruturado em JSON com nome da etapa, status, duração e número de linhas processadas (utilitário `monitoramento.Etapa`). Esses logs vão para o CloudWatch nativamente. Dois alarmes acompanham as falhas mais relevantes:
 
-- `alfabetizacao-lambda-erros`: dispara em erro na função de streaming.
-- `alfabetizacao-glue-falhas`: dispara em falha de job Glue.
+- `alfabetizacao-lambda-erros`: muda para o estado `ALARM` em erro na função de streaming.
+- `alfabetizacao-glue-falhas`: muda para o estado `ALARM` ao detectar tarefas Glue com falha.
+
+Na evidência registrada, os alarmes ainda não possuem uma ação de notificação associada. Em produção, ambos seriam conectados a um tópico SNS para notificação da equipe responsável.
 
 ### 7.2 FinOps
 
@@ -249,14 +251,14 @@ O detalhe completo da exploração está em `Exploração dos Dados.md`.
 
 ## 9. Aplicação em IA
 
-A camada Gold e os microdados foram desenhados para sustentar análises e modelos, não apenas relatórios. A pipeline entrega os dados no formato de que um projeto de IA precisa: limpo, rotulado e no grão certo. Quatro usos concretos:
+A Gold já atende análises territoriais e priorização; os microdados Silver formam uma base histórica para experimentos futuros. Para um modelo preditivo anterior à avaliação, entretanto, os dados atuais precisam ser enriquecidos com informações disponíveis antes da prova, como histórico escolar, contexto socioeconômico e infraestrutura da escola.
 
-- **Classificação de risco de não-alfabetização**: os microdados de alunos na Silver mantêm o grão individual, com `proficiencia`, `rede`, `presenca`, `peso_aluno` como possíveis features e o campo `alfabetizado` (0/1) como rótulo pronto. Isso permite treinar um classificador que estime a probabilidade de uma criança não alcançar a alfabetização a partir do seu contexto. O valor prático é agir antes da próxima avaliação, sinalizando alunos e turmas que precisam de reforço, em vez de só constatar o resultado depois.
-- **Regressão sobre a proficiência**: em vez de prever só o rótulo binário, um modelo de regressão pode estimar a nota na escala Saeb, útil para prever quão longe do corte de 743 um grupo tende a ficar e dimensionar o esforço necessário.
-- **Priorização de política pública**: o dataset `indicador_municipio` já traz o `gap_para_meta_2030` e o `ranking_na_uf`. Esses campos alimentam um modelo (ou até uma regra simples) que ordene municípios por urgência, apoiando a decisão de onde alocar recursos primeiro, uma pergunta direta de gestão.
-- **Fonte consistente de features**: por estar limpa, decodificada e integrada, a Silver serve de base única para todos esses experimentos. Sem ela, cada cientista de dados repetiria a limpeza por conta própria e poderia chegar a números diferentes; com ela, todos partem da mesma verdade.
+- **Classificação de risco de não-alfabetização**: `alfabetizado` pode ser o rótulo, mas `proficiencia` não pode ser usada como feature porque o próprio corte de 743 pontos define esse rótulo. Usá-la produziria vazamento de alvo. Um modelo de risco antecipado deve usar apenas variáveis conhecidas antes da avaliação e ser validado com separação temporal entre anos.
+- **Regressão de proficiência**: a proficiência pode ser o alvo de um modelo futuro, desde que as features também sejam anteriores à prova. As fontes externas sugeridas no enunciado, como Censo Escolar e indicadores socioeconômicos do IBGE, são caminhos de enriquecimento.
+- **Priorização de política pública**: o dataset `indicador_municipio` já traz `gap_para_meta_2030` e `ranking_na_uf`. Mesmo sem machine learning, esses campos permitem ordenar territórios por urgência com uma regra transparente e auditável.
+- **Base consistente para experimentos**: a Silver preserva o grão individual limpo e decodificado, enquanto a Gold oferece variáveis territoriais agregadas. Isso evita que cada experimento refaça a preparação dos dados de maneira diferente.
 
-As análises e modelos sempre tratam os padrões como associação e comparação, nunca como relação de causa (ver seção 14).
+Esses usos são possibilidades de evolução, não modelos já treinados pela entrega. As análises tratam os padrões como associação e comparação, nunca como relação de causa (ver seção 15).
 
 ---
 
@@ -306,9 +308,14 @@ python dashboard/gerar_dashboard.py
 
 # 8. Streaming (simulação)
 python src/streaming/producer.py --eventos 20 --intervalo 1
+
+# 9. Testes unitários que não dependem da infraestrutura cloud
+python -m unittest discover -s tests -v
 ```
 
 Na nuvem, os mesmos scripts rodam como jobs Glue: a Bronze como Glue Python Shell (autenticação GCP via Secrets Manager) e Silver, integração e Gold como Glue ETL Spark. Os módulos compartilhados (`spark_session`, `dicionario`, `monitoramento`, `qualidade`) são empacotados em um zip e passados ao job via `--extra-py-files`.
+
+Os nomes de bucket, profile, fila e segredo refletem o ambiente acadêmico executado e devem ser adaptados para outra conta. O provisionamento desses recursos não está automatizado por IaC nesta versão.
 
 **Estrutura do repositório:**
 
@@ -318,12 +325,13 @@ tech-challenge-2/
 ├── requirements.txt                     → Dependências do projeto
 ├── Exploração dos Dados.md              → Notebook de exploração e descobertas
 ├── docs/
-│   ├── evidencias/                      → Prints da execução na nuvem (seção 12)
-│   └── imagens/                         → Diagrama de arquitetura (drawio exportado)
+│   └── imagens/                         → Diagrama e evidências de execução na nuvem
 ├── dashboard/
 │   └── gerar_dashboard.py               → Gera HTML estático com Plotly a partir da Gold
 ├── analises/
 │   └── analise_metas_ausentes.py        → Investiga por que 242 municípios não têm meta
+├── tests/
+│   └── test_streaming_producer.py       → valida a serialização JSON dos eventos
 └── src/
     ├── bronze/
     │   └── bronze_ingestion.py          → BigQuery -> S3 (Parquet, particionado por ano)
@@ -372,19 +380,19 @@ Dois buckets separados: o de dados (privado) e o do dashboard (público), isolan
 
 ![Camadas no S3](docs/imagens/s3-camadas.png)
 
-Estrutura Bronze, Silver e Gold dentro do bucket de dados, com o particionamento por ano.
+Estrutura Bronze, Silver e Gold dentro do bucket privado de dados. O particionamento Hive-style é criado dentro dos datasets que possuem a coluna `ano`.
 
 **Streaming (SQS + Lambda)**
 
 ![Lambda do streaming](docs/imagens/lambda-streaming.png)
 
-A função `alfabetizacao-consumer` processando eventos da fila e gravando na Bronze.
+Configuração do vínculo entre a fila SQS e a função `alfabetizacao-consumer`.
 
 **Monitoramento (CloudWatch)**
 
-![CloudWatch logs e alarmes](docs/imagens/cloudwatch.png)
+![Alarmes no CloudWatch](docs/imagens/cloudwatch.png)
 
-Logs estruturados por etapa e os dois alarmes operacionais.
+Estado dos dois alarmes operacionais. No momento do registro, eles ainda não possuíam ação de notificação associada.
 
 **Credenciais (Secrets Manager)**
 
@@ -421,7 +429,7 @@ Cada camada foi desenvolvida em sua branch, revisada e integrada via PR. As mens
 
 Linguagem de negócio para os campos das camadas analíticas e para os códigos das fontes.
 
-### 13.1 Campos das camadas analíticas (Gold)
+### 14.1 Campos das camadas analíticas (Gold)
 
 | Campo | Significado |
 |-------|-------------|
@@ -437,7 +445,7 @@ Linguagem de negócio para os campos das camadas analíticas e para os códigos 
 | `taxa_ano_anterior` | Taxa de alfabetização do ano anterior, para comparação |
 | `variacao_pp` | Variação da taxa em pontos percentuais em relação ao ano anterior |
 
-### 13.2 Campos dos microdados de alunos
+### 14.2 Campos dos microdados de alunos
 
 | Campo | Significado |
 |-------|-------------|
@@ -448,7 +456,7 @@ Linguagem de negócio para os campos das camadas analíticas e para os códigos 
 | `presenca` | Se o estudante estava presente na avaliação |
 | `peso_aluno` | Peso amostral do estudante para cálculos agregados |
 
-### 13.3 Códigos e suas descrições
+### 14.3 Códigos e suas descrições
 
 **Rede de ensino (`rede`)**
 
@@ -471,10 +479,13 @@ Linguagem de negócio para os campos das camadas analíticas e para os códigos 
 
 ## 15. Limitações e Riscos
 
-- **Período curto**: só há dados reais de 2023 e 2024, então a evolução temporal se limita a dois pontos no tempo. As metas projetam até 2030, mas os dados reais vão só até 2025.
+- **Período curto**: os indicadores realizados cobrem apenas 2023 e 2024, então a evolução temporal se limita a dois pontos. Algumas tabelas de metas possuem ano de referência 2025 e projetam valores até 2030, mas isso não representa um resultado observado em 2025.
+- **Cobertura nas tabelas de metas**: a fonte não informa a taxa realizada para 120 municípios em 2023, para AC e DF em 2023 e para RR em 2023/2024; RR também não possui meta 2030 nesses dois anos. Esses valores permanecem nulos e são monitorados como aviso. A integração usa a taxa das tabelas de indicadores, não a coluna redundante das tabelas de metas, e RR não possui indicador correspondente para avançar à Gold.
 - **Correlação não é causalidade**: os padrões identificados (contraste regional, evolução, associação entre participação e ausência de meta) são associações observadas, não relações de causa.
 - **Cobertura da rede municipal**: os dados cobrem 25 das 26 unidades com rede municipal (o Distrito Federal não tem rede municipal; Roraima está ausente da fonte). O dashboard deixa claro que os números se referem aos "estados com dado municipal".
-- **Volume**: o dataset é pequeno (275 MB). O uso de Spark/Glue demonstra escalabilidade, mas não é uma exigência do volume atual.
+- **Streaming demonstrativo**: o caminho SQS + Lambda termina na Bronze; sua integração às transformações Silver e Gold é uma evolução futura.
+- **Escala da ingestão Bronze**: o volume atual, cerca de 275 MB, cabe no processamento em memória do Glue Python Shell. Para volumes substancialmente maiores, a leitura do BigQuery e a escrita no S3 precisariam ser feitas de forma incremental.
+- **Infraestrutura**: o código dos pipelines é reproduzível, mas o provisionamento dos recursos cloud e as políticas IAM ainda não estão codificados como IaC.
 
 ---
 

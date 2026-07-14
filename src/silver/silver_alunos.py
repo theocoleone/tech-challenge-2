@@ -39,6 +39,9 @@ def main():
 
         checar("silver_alunos", {
             "nulos em chave": nulos_em(df, ["ano", "id_municipio", "id_aluno"]),
+            "nulos em campos obrigatorios": nulos_em(
+                df, ["serie", "rede", "presenca", "preenchimento_caderno", "alfabetizado"]
+            ),
             "duplicidade de chave": duplicados_em(df, ["ano", "id_aluno"]),
             "alfabetizado invalido": fora_do_conjunto(df, "alfabetizado", ["0", "1"]),
             "municipios orfaos do diretorio": chaves_orfas(df, diretorio, "id_municipio"),

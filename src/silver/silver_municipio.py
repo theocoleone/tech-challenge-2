@@ -35,6 +35,9 @@ def main():
 
         checar("silver_municipio", {
             "nulos em chave": nulos_em(df, ["ano", "id_municipio", "rede"]),
+            "nulos em campos obrigatorios": nulos_em(
+                df, ["serie", "taxa_alfabetizacao"]
+            ),
             "duplicidade de chave": duplicados_em(df, ["ano", "id_municipio", "rede"]),
             "taxa fora de 0-100": fora_da_faixa(df, "taxa_alfabetizacao", 0, 100),
             "municipios sem UF": df.filter(F.col("sigla_uf").isNull()).count(),
