@@ -4,7 +4,7 @@
 **Curso:** Pós Graduação - AI Scientist - FIAP
 
 **Dashboard:** https://d131u8q9uidloe.cloudfront.net  
-**Vídeo executivo:** _(link a adicionar)_
+**Vídeo executivo:** https://youtu.be/agdhnlp-T-k
 
 ---
 
@@ -480,6 +480,6 @@ Linguagem de negócio para os campos das camadas analíticas e para os códigos 
 
 ## 16. Apresentação
 
-**Vídeo executivo:** _(link a adicionar)_
+**Vídeo executivo:** https://youtu.be/agdhnlp-T-k
 
 O vídeo aborda o problema de negócio, a arquitetura da solução, o valor para análises educacionais e o potencial de uso para IA, com demonstração da pipeline rodando na nuvem e do dashboard.
