@@ -27,34 +27,50 @@ Este projeto constrói uma pipeline de dados em nuvem que integra fontes públic
 
 A alfabetização na idade certa é um marco do desenvolvimento educacional. O **Compromisso Nacional Criança Alfabetizada** articula União, estados e municípios com a meta de que todas as crianças estejam alfabetizadas até o fim do 2º ano do Ensino Fundamental, no horizonte de 2030.
 
-Para acompanhar esse avanço, é preciso responder perguntas simples de enunciar e difíceis de medir: **quais territórios estão perto da meta, quais ficaram para trás e onde a situação está melhorando?** A dificuldade é que essa informação chega separada (metas de um lado, resultados de outro, dados de cada estado e município em formatos e granularidades diferentes). O problema técnico é integrar essas fontes em uma base analítica confiável e repetível a cada nova avaliação.
+Para acompanhar esse avanço, é preciso responder **quais territórios estão perto da meta, quais ficaram para trás e onde a situação está melhorando?** A dificuldade é que essa informação chega separada (metas de um lado, resultados de outro, dados de cada estado e município em formatos e granularidades diferentes). O problema técnico é integrar essas fontes em uma base analítica confiável e repetível a cada nova avaliação.
 
 ### 2.2 Por que o Indicador Criança Alfabetizada é importante?
 
-- Mede o progresso rumo a uma meta de política pública nacional
-- Permite comparar territórios (estados, municípios, regiões) sobre uma mesma régua
-- O ponto de corte é objetivo: **743 pontos na escala de proficiência do Saeb**
-- Conecta a avaliação individual das crianças ao acompanhamento agregado das metas
-- Funciona como termômetro para priorização de recursos e políticas
+O indicador mede o progresso rumo a uma meta de política pública nacional e permite comparar territórios (estados, municípios, regiões) sobre uma mesma régua. Seu ponto de corte é objetivo: uma criança é considerada alfabetizada a partir de **743 pontos na escala de proficiência do Saeb** (Sistema de Avaliação da Educação Básica, o exame nacional do INEP que mede o aprendizado dos estudantes). Ao partir da avaliação individual de cada criança e agregar por território, o indicador conecta o desempenho de sala de aula ao acompanhamento das metas e funciona como um termômetro para priorização de recursos e políticas.
 
 ### 2.3 Quais áreas se beneficiam desses insights?
 
 | Área | Benefício |
 |------|-----------|
-| Secretarias de Educação | Priorizar recursos nos territórios mais distantes da meta |
-| Gestão de política pública | Acompanhar a evolução das metas por estado e município |
-| Análise educacional | Estudar padrões de desigualdade regional sobre base confiável |
-| Ciência de dados / IA | Base limpa e no grão individual para modelos preditivos |
+| Secretarias de Educação | Identificar os territórios mais distantes da meta e direcionar recursos e programas para onde a defasagem é maior, em vez de distribuir de forma uniforme |
+| Gestão de política pública | Acompanhar a evolução das metas por estado e município ano a ano, comprovando avanço ou justificando novas ações |
+| Análise educacional | Estudar padrões de desigualdade regional sobre uma base única e confiável, sem que cada pesquisador refaça a limpeza e chegue a números diferentes |
+| Ciência de dados / IA | Antecipar risco: com o dado no grão individual, é possível estimar quais alunos ou municípios tendem a não alcançar a meta e agir antes da próxima avaliação, não só depois |
 
-### 2.4 O uso do indicador
+Sobre o último ponto: manter o dado limpo e no grão individual não beneficia só quem faz modelo. O impacto de negócio é a mudança de postura, de reativo para preventivo. Com o agregado, só se sabe o resultado depois que a avaliação aconteceu. Com o dado individual tratado, dá para construir modelos que sinalizam onde o risco é maior antes da prova, permitindo que a gestão atue de forma antecipada.
 
-O indicador é usado de duas formas na camada analítica: comparar a taxa realizada com a meta (onde cada território está em relação ao objetivo de 2030) e observar a evolução no tempo. Os microdados de alunos, no grão individual, ficam disponíveis como base para modelos preditivos.
+### 2.4 Como o indicador é usado e o que os dados cobrem
 
-Todas as fontes cobrem o **2º ano do Ensino Fundamental**, foco da política pública. Os dados reais disponíveis são de 2023 e 2024; as metas projetam até 2030.
+O indicador é usado de duas formas na camada analítica: (1) comparar a taxa realizada com a meta (onde cada território está em relação ao objetivo de 2030) e (2) observar a evolução no tempo. Os microdados de alunos, no grão individual, ficam disponíveis como base para modelos preditivos.
+
+Quanto ao escopo, todas as fontes cobrem o **2º ano do Ensino Fundamental**, foco da política pública. Os dados reais disponíveis são de 2023 e 2024; as metas projetam até 2030.
 
 ---
 
-## 3. Arquitetura da Solução
+## 3. Fontes de Dados
+
+Os dados vêm da plataforma [Base dos Dados](https://basedosdados.org/), do dataset `br_inep_avaliacao_alfabetizacao`, mais um diretório territorial auxiliar. São sete fontes:
+
+| Fonte | Conteúdo |
+|-------|----------|
+| `uf` | Taxa de alfabetização agregada por estado |
+| `municipio` | Taxa de alfabetização agregada por município |
+| `alunos` | Microdados individuais (proficiência por criança), 3,8 milhões de registros |
+| `meta_alfabetizacao_brasil` | Metas nacionais até 2030 |
+| `meta_alfabetizacao_uf` | Metas por estado |
+| `meta_alfabetizacao_municipio` | Metas por município |
+| `municipio` (diretório IBGE) | Tabela de referência: nome e UF de cada município |
+
+O diretório do IBGE (`br_bd_diretorios_brasil.municipio`) foi necessário porque as tabelas municipais de alfabetização trazem só o `id_municipio`, sem nome nem UF. Sem ele não seria possível agrupar municípios por estado ou região, essencial para a análise de desigualdade.
+
+---
+
+## 4. Arquitetura da Solução
 
 A solução adota a **Arquitetura Medalhão** (Bronze, Silver, Gold) sobre o Amazon S3, com processamento serverless no AWS Glue para o caminho batch e SQS mais Lambda para o streaming. Os dados de origem residem no BigQuery (backend da Base dos Dados); todo o restante roda na AWS.
 
@@ -99,14 +115,17 @@ flowchart LR
     LB -.log.-> CW
 ```
 
-### 3.1 As três camadas
+![Arquitetura da solução com ícones AWS](docs/imagens/arquitetura.png)
+
+### 4.1 As três camadas da Arquitetura Medalhão
 
 - **Bronze**: dado cru, uma cópia fiel da fonte, particionado por ano (padrão Hive).
 - **Silver**: dado limpo, decodificado e validado, com integração das bases (joins entre indicadores, metas e diretório territorial). Aplica os 4 mecanismos de qualidade e interrompe a gravação em caso de falha.
 - **Gold**: datasets analíticos prontos para consumo, orientados às perguntas de negócio. Consome a Silver já integrada, sem joins entre fontes.
-- **Streaming**: caminho paralelo que simula a chegada de novas medições de proficiência em near-real-time, gravando na Bronze.
 
-### 3.2 Caminho batch
+O caminho de streaming é ortogonal a essas camadas: ele alimenta a Bronze de forma contínua, ao lado da carga batch. As três camadas descrevem os estágios de refinamento do dado; o batch e o streaming são os dois modos de fazer o dado entrar na Bronze.
+
+### 4.2 Caminho batch
 
 1. **Ingestão (Bronze)**: o job `bronze-ingestion` (Glue Python Shell) consulta as sete fontes no BigQuery via `google-cloud-bigquery` e grava em Parquet (snappy) no S3, particionado por ano. O diretório de municípios não tem coluna de ano e é gravado em arquivo único.
 2. **Limpeza e validação (Silver)**: cinco jobs Glue ETL (Spark) leem a Bronze, removem duplicatas, decodificam os campos codificados (por exemplo `rede`) e aplicam os 4 mecanismos de qualidade. A tabela `municipio` recebe um left join com o diretório do IBGE para agregar nome e sigla da UF.
@@ -116,7 +135,7 @@ flowchart LR
    - `metas_vs_resultados_uf`: taxa realizada versus meta 2030 por estado, com percentual de atingimento.
    - `evolucao_uf`: série anual da taxa por estado, com a variação em pontos percentuais ano a ano.
 
-### 3.3 Caminho streaming
+### 4.3 Caminho streaming
 
 Um **producer** reamostra registros de alunos da Bronze e os publica como eventos individuais na fila **SQS** `alfabetizacao-eventos`, com intervalo configurável para simular fluxo contínuo. A fila aciona a função **Lambda** `alfabetizacao-consumer`, que grava cada evento na Bronze em `bronze/streaming/dt_ingestao=YYYY-MM-DD/`.
 
@@ -124,50 +143,30 @@ O producer simula a fonte externa de eventos: em produção, seria o sistema que
 
 ---
 
-## 4. Fontes de Dados
-
-Os dados vêm da plataforma [Base dos Dados](https://basedosdados.org/), do dataset `br_inep_avaliacao_alfabetizacao`, mais um diretório territorial auxiliar. São sete fontes:
-
-| Fonte | Conteúdo |
-|-------|----------|
-| `uf` | Taxa de alfabetização agregada por estado |
-| `municipio` | Taxa de alfabetização agregada por município |
-| `alunos` | Microdados individuais (proficiência por criança), 3,8 milhões de registros |
-| `meta_alfabetizacao_brasil` | Metas nacionais até 2030 |
-| `meta_alfabetizacao_uf` | Metas por estado |
-| `meta_alfabetizacao_municipio` | Metas por município |
-| `municipio` (diretório IBGE) | Tabela de referência: nome e UF de cada município |
-
-O diretório do IBGE (`br_bd_diretorios_brasil.municipio`) foi necessário porque as tabelas municipais de alfabetização trazem só o `id_municipio`, sem nome nem UF. Sem ele não seria possível agrupar municípios por estado ou região, essencial para a análise de desigualdade.
-
----
-
 ## 5. Decisões Técnicas e Trade-offs
-
-O que é avaliado não é uma "resposta certa", e sim decisões conscientes com trade-off justificado.
 
 ### 5.1 Tecnologias
 
 | Componente | Tecnologia | Por que |
 |------------|-----------|---------|
-| Origem | BigQuery (Base dos Dados) | Backend público oficial do dataset do INEP |
+| Fonte | BigQuery (Base dos Dados) | Backend público oficial do dataset do INEP |
 | Armazenamento | Amazon S3 | Data lake de baixo custo; base das três camadas em Parquet |
 | Ingestão batch | AWS Glue Python Shell | Tarefa de I/O que não se beneficia de cluster distribuído; evita pagar por Spark |
 | Processamento batch | AWS Glue ETL (Spark serverless) | Compute escalável gerenciado; mesma lógica portável para EMR sem reescrita |
 | Streaming | Amazon SQS + AWS Lambda | Ingestão near-real-time sem servidor ativo; free tier cobre o volume simulado |
 | Credenciais de terceiro | AWS Secrets Manager | Cofre gerenciado e criptografado para a chave da service account GCP |
-| Observabilidade | Amazon CloudWatch | Logs nativos dos jobs Glue e da Lambda, mais dois alarmes operacionais |
+| Monitoramento | Amazon CloudWatch | Logs nativos dos jobs Glue e da Lambda, mais dois alarmes operacionais |
 | Formato | Parquet + snappy | Colunar e comprimido; reduz volume lido em consultas analíticas |
 
 ### 5.2 Batch vs streaming
 
-A maior parte das fontes (metas, indicadores, diretório) é publicada em ciclos avaliativos, o que caracteriza um caso de batch, atendido pelos jobs Glue. O streaming entra para simular a chegada incremental de novas medições de proficiência, demonstrando o padrão híbrido. Cada fonte é tratada pelo modo que corresponde à sua natureza, não por obrigação.
+A maior parte das fontes (metas, indicadores, diretório) é publicada em ciclos avaliativos, ou seja, de tempos em tempos, o que caracteriza um caso de batch, atendido pelos jobs Glue. O streaming entra para simular a chegada incremental de novas medições de proficiência, demonstrando o padrão híbrido. Cada fonte é tratada pelo modo que corresponde à sua natureza, não por obrigação.
 
 **Sobre Kafka:** o desafio pede ingestão híbrida, não uma ferramenta específica. Para o volume de eventos simulado, manter um cluster Kafka ou mesmo Kinesis seria over-engineering. SQS mais Lambda entrega a mesma semântica (produtor e consumidor desacoplados) com custo zero no free tier e sem infraestrutura para operar.
 
 ### 5.3 Data lake vs data warehouse
 
-Optamos por um data lake em S3 (Parquet nas três camadas) em vez de um data warehouse gerenciado como o Redshift. O lake tem custo de armazenamento muito menor, aceita dados de granularidades diferentes (dos microdados de aluno aos agregados nacionais) e desacopla armazenamento de compute. A contrapartida é que consultas analíticas exigem uma engine por cima (o próprio Spark do Glue, ou Athena). Para o volume e o objetivo do projeto, o lake é suficiente.
+Optou-se por um data lake em S3 (Parquet nas três camadas) em vez de um data warehouse gerenciado como o Redshift. O lake tem custo de armazenamento muito menor, aceita dados de granularidades diferentes (dos microdados de aluno aos agregados nacionais) e desacopla armazenamento de compute. A contrapartida é que consultas analíticas exigem uma engine por cima (o próprio Spark do Glue, ou Athena). Para o volume e o objetivo do projeto, o lake é suficiente.
 
 ### 5.4 Custo vs performance
 
@@ -175,7 +174,7 @@ Os workers do Glue foram dimensionados no mínimo (2 workers G.1X nos ETL, 1 DPU
 
 ### 5.5 Processamento local vs Glue
 
-O volume do dataset (cerca de 275 MB, concentrados na tabela de alunos) não exigiria Spark. A escolha pelo Glue atende o objetivo central do enunciado (pipeline escalável em nuvem com compute real) e foi viabilizada pelos créditos da conta. A abstração `get_spark()` detecta o ambiente: no Glue usa a sessão nativa (credenciais via papel IAM do job); localmente usa o conector `s3a` com um profile do AWS CLI. O mesmo código roda nos dois cenários sem alteração.
+O volume do dataset (cerca de 275 MB, concentrados na tabela de alunos) não exigiria Spark. A escolha pelo Glue atende o objetivo central do enunciado (pipeline escalável em nuvem com compute real) e foi viabilizada por US$ 100 em créditos AWS concedidos na abertura da conta, que cobriram o custo de execução dos jobs. A abstração `get_spark()` detecta o ambiente: no Glue usa a sessão nativa (credenciais via papel IAM do job); localmente usa o conector `s3a` com um profile do AWS CLI. O mesmo código roda nos dois cenários sem alteração.
 
 ### 5.6 Outras decisões de modelagem
 
@@ -187,9 +186,9 @@ O volume do dataset (cerca de 275 MB, concentrados na tabela de alunos) não exi
 
 ### 5.7 Segurança
 
-- **Chave do GCP no Secrets Manager**: a Bronze precisa autenticar no BigQuery. Em um job headless não há login por navegador, então usamos uma service account com chave JSON, guardada no Secrets Manager (cofre criptografado com auditoria) em vez do S3.
+- **Chave do GCP no Secrets Manager**: a Bronze precisa autenticar no BigQuery. Em um job headless não há login por navegador, então usa-se uma service account com chave JSON, guardada no Secrets Manager (cofre criptografado com auditoria) em vez do S3.
 - **Dashboard isolado dos dados**: o site é publicado em um bucket dedicado, servido por HTTPS via CloudFront; o bucket de dados (Bronze, Silver, Gold) permanece totalmente privado, com bloqueio de acesso público ativo. Isso isola a exposição do site dos dados da pipeline.
-- **IAM**: a conta é pessoal, isolada e sem dados sensíveis. Para o prazo acadêmico, as policies `FullAccess` foram aceitáveis; em produção, aplicaríamos least privilege escopado ao bucket e às filas, e IAM Identity Center (SSO).
+- **IAM**: a conta é pessoal, isolada e sem dados sensíveis. Para o prazo acadêmico, as policies `FullAccess` foram aceitáveis; em produção, aplicar-se-ia least privilege escopado ao bucket e às filas, e IAM Identity Center (SSO).
 
 ---
 
@@ -206,7 +205,7 @@ A pipeline implementa quatro mecanismos de validação, todos concentrados na ca
 
 O módulo `src/qualidade.py` é reutilizado por todos os jobs Silver. As funções recebem o DataFrame e devolvem a contagem de violações. Duas posturas: `checar` interrompe o job (dado corrompido, como nulo em chave), enquanto `avisar` apenas registra a contagem (violação esperada pela natureza do dado).
 
-Essa distinção nasceu de um caso real: a validação de consistência apontou 242 municípios com taxa medida mas sem meta 2030 projetada. Em vez de tratar como erro, investigamos (ver seção 8) e concluímos que é comportamento esperado da fonte. Por isso essa validação virou informativa, e os municípios são preservados na base integrada com meta nula.
+Essa distinção nasceu de um caso real: a validação de consistência apontou 242 municípios com taxa medida mas sem meta 2030 projetada. Em vez de tratar como erro, investigou-se (ver seção 8) e concluiu-se que é comportamento esperado da fonte. Por isso essa validação virou informativa, e os municípios são preservados na base integrada com meta nula.
 
 ---
 
@@ -239,13 +238,10 @@ Decisões que reduzem custo: Parquet com snappy (menos volume lido), particionam
 
 As análises descrevem relações observadas nos dados, sem inferência de causalidade.
 
-**Apenas o Ceará atingiu a meta.** Na rede municipal, olhando 2024, só o Ceará já alcançou a taxa projetada para 2030 (85,35%, atingimento de 106,69%). Todos os outros estados estão abaixo, vários bastante distantes.
-
-**Contraste regional.** O topo do ranking concentra Sul, Sudeste e Centro-Oeste; o fundo concentra Norte e Nordeste. É uma associação observada, não uma relação de causa.
-
-**Evolução.** Alguns estados avançaram bem de 2023 para 2024, com destaque para Minas Gerais (maior variação positiva no período). Os dados mostram que a variação aconteceu; não permitem afirmar o que a causou.
-
-**Municípios sem meta.** 242 municípios têm taxa medida mas não têm meta 2030 projetada pelo INEP. Investigando (script em `analises/analise_metas_ausentes.py`), a ausência de meta está fortemente associada à baixa participação na avaliação: abaixo de 70% de comparecimento, a maioria dos municípios não recebe meta. É comportamento esperado da fonte, e um achado relevante em si, os territórios sem acompanhamento tendem a ser os de menor cobertura.
+- **Apenas o Ceará atingiu a meta.** Na rede municipal, olhando 2024, só o Ceará já alcançou a taxa projetada para 2030 (85,35%, atingimento de 106,69%). Todos os outros estados estão abaixo, vários bastante distantes.
+- **Contraste regional.** O topo do ranking concentra Sul, Sudeste e Centro-Oeste; o fundo concentra Norte e Nordeste. É uma associação observada, não uma relação de causa.
+- **Evolução.** Alguns estados avançaram bem de 2023 para 2024, com destaque para Minas Gerais (maior variação positiva no período). Os dados mostram que a variação aconteceu; não permitem afirmar o que a causou.
+- **Municípios sem meta.** 242 municípios têm taxa medida mas não têm meta 2030 projetada pelo INEP. Investigando (script em `analises/analise_metas_ausentes.py`), a ausência de meta está fortemente associada à baixa participação na avaliação: abaixo de 70% de comparecimento, a maioria dos municípios não recebe meta. É comportamento esperado da fonte, e um achado relevante em si, os territórios sem acompanhamento tendem a ser os de menor cobertura.
 
 O detalhe completo da exploração está em `Exploração dos Dados.md`.
 
@@ -253,27 +249,22 @@ O detalhe completo da exploração está em `Exploração dos Dados.md`.
 
 ## 9. Aplicação em IA
 
-A camada Gold e os microdados foram desenhados para sustentar análises e modelos, não apenas relatórios.
+A camada Gold e os microdados foram desenhados para sustentar análises e modelos, não apenas relatórios. A pipeline entrega os dados no formato de que um projeto de IA precisa: limpo, rotulado e no grão certo. Quatro usos concretos:
 
-- **Base para modelos preditivos**: os microdados de alunos na Silver mantêm o grão individual (proficiência, rede, presença, peso amostral, rótulo `alfabetizado`). Esse conjunto pode alimentar um modelo de classificação para estimar a probabilidade de alfabetização a partir do contexto do estudante, ou uma regressão sobre a proficiência.
-- **Priorização de política pública**: o dataset `indicador_municipio` traz o gap para a meta e o ranking dentro da UF, insumos para um modelo que ordene municípios por distância da meta.
-- **Análise de desigualdade**: as agregações por rede e território permitem observar padrões geográficos e comparar redes, sempre como associação e comparação, sem inferência de causalidade.
-- **Fonte consistente de features**: a Silver, limpa e decodificada, serve de base única para experimentos, evitando que cada análise repita a limpeza.
+- **Classificação de risco de não-alfabetização**: os microdados de alunos na Silver mantêm o grão individual, com `proficiencia`, `rede`, `presenca`, `peso_aluno` como possíveis features e o campo `alfabetizado` (0/1) como rótulo pronto. Isso permite treinar um classificador que estime a probabilidade de uma criança não alcançar a alfabetização a partir do seu contexto. O valor prático é agir antes da próxima avaliação, sinalizando alunos e turmas que precisam de reforço, em vez de só constatar o resultado depois.
+- **Regressão sobre a proficiência**: em vez de prever só o rótulo binário, um modelo de regressão pode estimar a nota na escala Saeb, útil para prever quão longe do corte de 743 um grupo tende a ficar e dimensionar o esforço necessário.
+- **Priorização de política pública**: o dataset `indicador_municipio` já traz o `gap_para_meta_2030` e o `ranking_na_uf`. Esses campos alimentam um modelo (ou até uma regra simples) que ordene municípios por urgência, apoiando a decisão de onde alocar recursos primeiro, uma pergunta direta de gestão.
+- **Fonte consistente de features**: por estar limpa, decodificada e integrada, a Silver serve de base única para todos esses experimentos. Sem ela, cada cientista de dados repetiria a limpeza por conta própria e poderia chegar a números diferentes; com ela, todos partem da mesma verdade.
+
+As análises e modelos sempre tratam os padrões como associação e comparação, nunca como relação de causa (ver seção 14).
 
 ---
 
 ## 10. Dashboard
 
-Dashboard estático com gráficos interativos (hover, zoom, filtro por legenda), gerado a partir dos datasets Gold e publicado na nuvem:
+Como forma de comprovar a consistência dos dados da camada Gold e de tornar os resultados acessíveis a quem não abre um notebook, montou-se um dashboard a partir dos datasets Gold, com gráficos interativos (hover, zoom, filtro por legenda): uma faixa de indicadores-chave e quatro visualizações (ranking de UFs por taxa de alfabetização, meta 2030 versus realizado, evolução temporal por UF e municípios mais distantes da meta). Ele serve tanto de validação visual (números tortos apareceriam de imediato) quanto de entrega final para um gestor.
 
 **https://d131u8q9uidloe.cloudfront.net**
-
-```bash
-pip install plotly
-python dashboard/gerar_dashboard.py
-```
-
-Produz `dashboard/index.html` com uma faixa de indicadores-chave e quatro visualizações: ranking de UFs por taxa de alfabetização, meta 2030 versus realizado, evolução temporal por UF e municípios mais distantes da meta.
 
 A entrega usa dois níveis: um bucket S3 dedicado hospeda o arquivo, e uma distribuição CloudFront (CDN da AWS) serve o site por HTTPS, com redirecionamento automático de HTTP e cache global. O bucket de dados (Bronze, Silver, Gold) permanece totalmente privado, isolado do site (ver seção 5.7).
 
@@ -326,6 +317,9 @@ tech-challenge-2/
 ├── README.md                            → Este arquivo
 ├── requirements.txt                     → Dependências do projeto
 ├── Exploração dos Dados.md              → Notebook de exploração e descobertas
+├── docs/
+│   ├── evidencias/                      → Prints da execução na nuvem (seção 12)
+│   └── imagens/                         → Diagrama de arquitetura (drawio exportado)
 ├── dashboard/
 │   └── gerar_dashboard.py               → Gera HTML estático com Plotly a partir da Gold
 ├── analises/
@@ -354,7 +348,49 @@ tech-challenge-2/
 
 ---
 
-## 12. Fluxo de Trabalho no Git
+## 12. Evidências de Execução na Nuvem
+
+Provas de que a pipeline rodou de fato na AWS. As imagens ficam em `docs/evidencias/`.
+
+**Jobs Glue concluídos (batch)**
+
+![Jobs Glue SUCCEEDED](docs/evidencias/glue-jobs.png)
+
+Os oito jobs (`bronze_ingestion`, os cinco Silver, `silver_integracao`, `gold_alfabetizacao`) executados com status SUCCEEDED.
+
+**Camadas no S3**
+
+![Camadas no S3](docs/evidencias/s3-camadas.png)
+
+Estrutura Bronze, Silver e Gold no bucket, com o particionamento por ano.
+
+**Streaming (SQS + Lambda)**
+
+![Lambda do streaming](docs/evidencias/lambda-streaming.png)
+
+A função `alfabetizacao-consumer` processando eventos da fila e gravando na Bronze.
+
+**Monitoramento (CloudWatch)**
+
+![CloudWatch logs e alarmes](docs/evidencias/cloudwatch.png)
+
+Logs estruturados por etapa e os dois alarmes operacionais.
+
+**Credenciais (Secrets Manager)**
+
+![Secrets Manager](docs/evidencias/secrets-manager.png)
+
+O segredo `gcp-service-account-bronze` que guarda a chave da service account do GCP.
+
+**Dashboard publicado (HTTPS via CloudFront)**
+
+![Dashboard](docs/evidencias/dashboard.png)
+
+O dashboard servido por HTTPS em https://d131u8q9uidloe.cloudfront.net
+
+---
+
+## 13. Fluxo de Trabalho no Git
 
 O desenvolvimento seguiu um fluxo de feature branches com Pull Requests para a `main`, refletindo a evolução do pipeline camada por camada:
 
@@ -371,7 +407,7 @@ Cada camada foi desenvolvida em sua branch, revisada e integrada via PR. As mens
 
 ---
 
-## 13. Dicionário de Dados
+## 14. Dicionário de Dados
 
 Linguagem de negócio para os campos das camadas analíticas e para os códigos das fontes.
 
@@ -423,17 +459,16 @@ Linguagem de negócio para os campos das camadas analíticas e para os códigos 
 
 ---
 
-## 14. Limitações e Riscos
+## 15. Limitações e Riscos
 
 - **Período curto**: só há dados reais de 2023 e 2024, então a evolução temporal se limita a dois pontos no tempo. As metas projetam até 2030, mas os dados reais vão só até 2025.
 - **Correlação não é causalidade**: os padrões identificados (contraste regional, evolução, associação entre participação e ausência de meta) são associações observadas, não relações de causa.
 - **Cobertura da rede municipal**: os dados cobrem 25 das 26 unidades com rede municipal (o Distrito Federal não tem rede municipal; Roraima está ausente da fonte). O dashboard deixa claro que os números se referem aos "estados com dado municipal".
 - **Volume**: o dataset é pequeno (275 MB). O uso de Spark/Glue demonstra escalabilidade, mas não é uma exigência do volume atual.
-- **Fonte externa socioeconômica**: o enriquecimento com IDH/renda (sugerido como opcional) não foi incorporado; usamos o diretório do IBGE como enriquecimento territorial.
 
 ---
 
-## 15. Apresentação
+## 16. Apresentação
 
 **Vídeo executivo:** _(link a adicionar)_
 
