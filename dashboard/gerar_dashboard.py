@@ -180,7 +180,10 @@ header.topo .kicker {
 header.topo .kicker::before, header.topo .kicker::after { content: ""; width: 2.2rem; height: 2px; background: #b8431d; }
 header.topo h1 {
   font-family: 'Fraunces', Georgia, serif; font-weight: 900; font-size: 3.4rem;
-  line-height: 1.02; letter-spacing: -0.02em; color: #1c1b2a; margin-bottom: 1rem;
+  line-height: 1.05; letter-spacing: -0.02em; color: #1c1b2a; margin-bottom: 1rem;
+}
+header.topo h1 .sub-titulo {
+  display: block; font-size: 2.3rem; font-weight: 700; color: #565266; margin-top: 0.2rem;
 }
 header.topo p {
   font-family: 'Fraunces', Georgia, serif; font-size: 1.3rem; font-weight: 400;
@@ -247,7 +250,7 @@ def main():
         "<div class='masthead'><span>Tech Challenge · Fase 2</span><span>FIAP · AI Scientist</span></div>",
         "<header class='topo'>",
         "<div class='kicker'>Painel de Indicadores</div>",
-        f"<h1>Alfabetização no Brasil: Rede Municipal ({ano})</h1>",
+        f"<h1>Alfabetização no Brasil<span class='sub-titulo'>Rede Municipal ({ano})</span></h1>",
         "<p>Acompanhamento do Indicador Criança Alfabetizada (2º ano do Ensino Fundamental) "
         "frente às metas do Compromisso Nacional Criança Alfabetizada. "
         f"Dados de {ano_min} e {ano}, com metas projetadas até 2030.</p></header>",
