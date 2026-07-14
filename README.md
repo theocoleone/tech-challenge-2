@@ -350,41 +350,51 @@ tech-challenge-2/
 
 ## 12. Evidências de Execução na Nuvem
 
-Provas de que a pipeline rodou de fato na AWS. As imagens ficam em `docs/evidencias/`.
+Provas de que a pipeline rodou de fato na AWS. As imagens ficam em `docs/imagens/`.
 
 **Jobs Glue concluídos (batch)**
 
-![Jobs Glue SUCCEEDED](docs/evidencias/glue-jobs.png)
+![Execuções Glue com status SUCCEEDED](docs/imagens/glue-jobs.png)
 
-Os oito jobs (`bronze_ingestion`, os cinco Silver, `silver_integracao`, `gold_alfabetizacao`) executados com status SUCCEEDED.
+Execuções dos jobs com status SUCCEEDED, com tempo de execução e DPU-hora consumida por run.
+
+![Lista dos jobs Glue](docs/imagens/glue-jobs-lista.png)
+
+Os oito jobs cadastrados: `bronze_ingestion` (Python Shell), os cinco Silver, `silver_integracao` e `gold_alfabetizacao` (ETL Spark).
+
+**Buckets no S3 (dados e dashboard isolados)**
+
+![Buckets no S3](docs/imagens/s3-buckets.png)
+
+Dois buckets separados: o de dados (privado) e o do dashboard (público), isolando a exposição do site dos dados da pipeline.
 
 **Camadas no S3**
 
-![Camadas no S3](docs/evidencias/s3-camadas.png)
+![Camadas no S3](docs/imagens/s3-camadas.png)
 
-Estrutura Bronze, Silver e Gold no bucket, com o particionamento por ano.
+Estrutura Bronze, Silver e Gold dentro do bucket de dados, com o particionamento por ano.
 
 **Streaming (SQS + Lambda)**
 
-![Lambda do streaming](docs/evidencias/lambda-streaming.png)
+![Lambda do streaming](docs/imagens/lambda-streaming.png)
 
 A função `alfabetizacao-consumer` processando eventos da fila e gravando na Bronze.
 
 **Monitoramento (CloudWatch)**
 
-![CloudWatch logs e alarmes](docs/evidencias/cloudwatch.png)
+![CloudWatch logs e alarmes](docs/imagens/cloudwatch.png)
 
 Logs estruturados por etapa e os dois alarmes operacionais.
 
 **Credenciais (Secrets Manager)**
 
-![Secrets Manager](docs/evidencias/secrets-manager.png)
+![Secrets Manager](docs/imagens/secrets-manager.png)
 
 O segredo `gcp-service-account-bronze` que guarda a chave da service account do GCP.
 
 **Dashboard publicado (HTTPS via CloudFront)**
 
-![Dashboard](docs/evidencias/dashboard.png)
+![Dashboard](docs/imagens/dashboard.png)
 
 O dashboard servido por HTTPS em https://d131u8q9uidloe.cloudfront.net
 
